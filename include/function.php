@@ -1,5 +1,5 @@
 <?php
-	error_reporting(E_ALL);
+	error_reporting(0);
 	date_default_timezone_set('Asia/Manila'); // change according timezone
 	function dbconnect(){
 		global $DB_HOST,$DB_NAME,$DB_USER,$DB_PASS,$DB_CHARSET;
@@ -23,18 +23,16 @@
 		return $pdo;
 	}
 	
-
 	//LOG RECORD
 	function log_sign_in($username,$type) {
-		if(empty($username) || empty($type)){
+		if(empty($username)||empty($type)){
 			return false; // return or throw error here, depending on your preference
 		}
 		try {
 			$con = dbconnect();
 			$sql = "INSERT INTO `user_log` (`username`,`type`, `sign_in`) VALUES (?,?, NOW())";
 			$stmt = $con->prepare($sql);
-			$stmt->bindParam(1, $username, PDO::PARAM_STR);
-			$stmt->bindParam(2, $type, PDO::PARAM_STR);
+			$stmt->bindParam(2, $username,$type, PDO::PARAM_STR);
 			$stmt->execute();
 			if ($stmt->rowCount() !== 1) {
 				throw new Exception('Failed to insert user log');
@@ -48,23 +46,26 @@
 		}
 		return true;
 	}
-
 	//LOG RECORD
 	function log_sign_out($username) {
-		if(empty($username)) {
-			return false;
+		if(!empty($username)) {
+			try {
+				$con = dbconnect();
+				$stmt = $con->prepare("UPDATE `user_log` SET `sign_out` = NOW() WHERE `username` = ? ORDER BY `id` DESC LIMIT 1");
+				$stmt->execute([$username]);
+			} catch (PDOException $e) {
+				// Log the error
+				$_SESSION['error']='Somethign went wrong.'.$e->getMessage();
+				error_log($e->getMessage(), 0);
+				return false;
+			} finally {
+				$con = null;
+			}
+			return true;
 		}
-		try {
-			$con = dbconnect();
-			$stmt = $con->prepare("UPDATE `user_log` SET `sign_out` = NOW() WHERE `username` = ? ORDER BY `id` DESC LIMIT 1");
-			$stmt->execute([$username]);
-		} catch (PDOException $e) {
-			// Log the error
-			error_log($e->getMessage(), 0);
-		} finally {
-			$con = null;
-		}
+		return false;
 	}
+
 
 
  
@@ -106,6 +107,24 @@
 		$con = null;
 		return $row;
 	}
+	
+	//GET RECORD WITH A SPECIFIC QUERY
+	function getrecord_query2($sql) {
+		if(empty($sql)) {
+			return false;
+		}
+		$row = null;
+		$con = dbconnect();
+		try {
+			$stmt = $con->prepare($sql);
+			$stmt->execute();
+			$row = $stmt->fetch(PDO::FETCH_ASSOC);
+		} catch (Exception $e) {
+			$_SESSION['error'] = 'Something went wrong: ' . $e->getMessage();
+		}
+		$con = null;
+		return $row;
+	}
 
 	
 	//GET RECORD FROM DB
@@ -122,6 +141,7 @@
 			$row = $stmt->fetch(PDO::FETCH_ASSOC);
 		} catch (Exception $e) {
 			// Log the error
+			$_SESSION['error'] = 'Something went wrong: ' . $e->getMessage();
 			error_log($e->getMessage(), 0);
 			// Return null on error
 			return null;
@@ -138,27 +158,20 @@
 		if(empty($table) || empty($fields) || empty($data)) {
 			return false;
 		}
-		// Sanitize input parameters
-		$table = filter_var($table, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-		if(!is_array($fields)) {
-			$fields = array($fields);
-		}
-		$fields = array_map('trim', $fields);
-		if(!is_array($data)) {
-			$data = array($data);
-		}
-		$data = array_map('trim', $data);
-		
 		if(count($fields) !== count($data)) {
 			// Number of fields does not match number of data values
 			return false;
 		}
-		
+		// Sanitize input parameters
+		$table  = htmlspecialchars($table, ENT_QUOTES, 'UTF-8');
+		$fields = array_map('trim', $fields);
+		$data = array_map('trim', $data);
 		// Connect to database
 		try {
 			$con = dbconnect();
 		} catch(PDOException $e) {
 			// Log error and return false on failure
+			$_SESSION['error'] = 'Something went wrong: ' . $e->getMessage();
 			error_log($e->getMessage(), 0);
 			return false;
 		}
@@ -174,6 +187,7 @@
 			}
 		} catch(PDOException $e) {
 			// Log error and return false on failure
+			$_SESSION['error'] = 'Something went wrong: ' . $e->getMessage();
 			error_log($e->getMessage(), 0);
 			return false;
 		}
@@ -183,6 +197,7 @@
 		} catch(PDOException $e) {
 			// Log error and return false on failure
 			error_log($e->getMessage(), 0);
+			$_SESSION['error'] = 'Something went wrong: ' . $e->getMessage();
 			return false;
 		}
 		// Check if one record was inserted
@@ -194,7 +209,6 @@
 		// Return success
 		return true;
 	}
-
 
 	//
 	function updaterecord($table, $fields, $data) {
@@ -223,7 +237,7 @@
 			$stmt->execute($params);
 			$flag = $stmt->rowCount();
 		}catch(Exception $e){
-			$_SESSION['error'] = 'Something went wrong in updating record.'.$e->getMessage();
+			$_SESSION['error'] = 'Something went wrong.'.$e->getMessage();
 			$flag = false;
 		}
 		$con = null;
@@ -252,7 +266,7 @@
 				return false;
 			}
 		} catch (Exception $e) {
-			$_SESSION['error'] = 'Something went wrong in deleting record.';
+			$_SESSION['error'] = 'Something went wrong: ' . $e->getMessage();
 			error_log($e->getMessage(), 0);
 			return false;
 		}
@@ -322,7 +336,9 @@
 	//SEND NOTIFCATION
 	function notify($recepient,$sender,$content){
 		if(!empty($recepient) &&!empty($sender) &&!empty($content) ){
-			return addrecord('notifcation',['recepient_id','sender_id','content','status','created_on`'],[$recepient,$sender,$content,1,]);
+			$created_on=date('Y-m-d H:i:s');
+			$status=0;
+			return addrecord('notification',['recepient_id','sender_id','content','status','created_on'],[$recepient,$sender,$content,$status,$created_on]);
 		}//
 		else{
 			return false;
@@ -338,7 +354,8 @@
 			$rows = $stmt->rowCount();
 			return $rows;
 		} catch(PDOException $e) {
-			echo "Error: " . $e->getMessage();
+			$_SESSION['error'] = 'Something went wrong: ' . $e->getMessage();
+			//echo "Error: " . $e->getMessage();
 		}
 		$con = null;
 	}
@@ -427,6 +444,18 @@
 			return true;
 		}
 	}
+	
+	//SHORTEN THE LONG TEXT
+	function short_text($text){
+		if(!empty($text)){
+			if(strlen($text)>30){
+				$text = substr($text, 0, 30) . "...";
+				return $text;
+			}
+			return $text;
+		}
+	}
+	
 	//SEND EMAIL
 	function send_email($email,$subject,$message){
 		$curl = curl_init();
