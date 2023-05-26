@@ -1,0 +1,12 @@
+@charset 'UTF-8';
+	.poster h5{
+		margin:-42px 60px;
+	}
+	option-button{
+		border-radius:black;
+		margin:-40px 90%;
+		position:absolute;
+		text-align:right;
+		border-radius:10px;
+		//background:red;
+	}
