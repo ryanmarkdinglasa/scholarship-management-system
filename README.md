@@ -1,7 +1,10 @@
-# iskalar
+## PROEJCT TITLE
 ISKALAR: An online platform for Government scholar's management and monitoring
 
-ABSTRACT
+## DESCRIPTION
+- This is my CAPSTONE project
+
+## ABSTRACT
 
 Management of scholarships is a crucial component of higher education institutions as it entails coordinating student financial aid. Institutions require assistance in efficiently managing their scholarship programs due to the rising number of scholarship applications and the difficulty of the application procedure. This research paper offers a case study of how using an online platform for managing scholarships might improve scholarship management.
 
